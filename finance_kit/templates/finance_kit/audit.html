@@ -1,0 +1,78 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Kassenprüfung ({{ year }}){% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="kpi-bento-grid mb-4">
+    {% include "design_studio/components/kpi_card.html" with title="Aktive Buchungen" value=findings.total_entries icon="bi-journal-check" size="sm" state=1 %}
+    {% include "design_studio/components/kpi_card.html" with title="Ohne Belegdatei" value=findings.missing_receipts_count icon="bi-exclamation-triangle" size="sm" state=3 %}
+    {% include "design_studio/components/kpi_card.html" with title="Stornos" value=findings.cancelled_count icon="bi-arrow-counterclockwise" size="sm" state=4 %}
+    {% include "design_studio/components/kpi_card.html" with title="Pauschalen-Warnung" value=findings.allowances_over|length icon="bi-shield-exclamation" size="sm" state=5 %}
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-7">
+        <div class="card shadow-sm mb-3">
+            <div class="card-header fw-bold"><i class="bi bi-search me-1 text-warning"></i>Plausibilitätsprüfung: Buchungen ohne Belegdatei ({{ year }})</div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead><tr><th>Beleg-Nr.</th><th>Datum</th><th>Beschreibung</th><th class="text-end">Betrag</th></tr></thead>
+                    <tbody>
+                        {% for e in findings.missing_receipts %}
+                        <tr>
+                            <td class="small">{{ e.receipt_number|default:e.id }}</td>
+                            <td class="small">{{ e.date|date:"d.m.Y" }}</td>
+                            <td>{{ e.description }}</td>
+                            <td class="text-end fw-semibold">{{ e.amount|floatformat:2 }} €</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="text-center text-success small py-3"><i class="bi bi-check-circle me-1"></i>Alle Buchungen haben einen Beleg!</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-header fw-bold"><i class="bi bi-file-earmark-check me-1"></i>Gespeicherte Prüfberichte ({{ year }})</div>
+            <div class="list-group list-group-flush">
+                {% for r in reports %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold">{{ r.audit_date|date:"d.m.Y" }} · {{ r.get_result_display }}</div>
+                        <div class="small text-muted">Prüfer: {{ r.auditor_1 }}{% if r.auditor_2 %}, {{ r.auditor_2 }}{% endif %}</div>
+                    </div>
+                    <a href="{% url 'finance_kit:audit_report_pdf' r.id %}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+                </div>
+                {% empty %}
+                <div class="p-3 text-center text-muted small">Noch kein Prüfbericht für {{ year }} erstellt.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-5">
+        {% if can_write %}
+        <form method="post" class="card shadow-sm">
+            {% csrf_token %}
+            <input type="hidden" name="year" value="{{ year }}">
+            <div class="card-header fw-bold"><i class="bi bi-pencil-square me-1"></i>Prüfvermerk erstellen</div>
+            <div class="card-body row g-2">
+                <div class="col-12"><label class="form-label small">Kassenprüfer 1</label><input type="text" name="auditor_1" class="form-control form-control-sm" required></div>
+                <div class="col-12"><label class="form-label small">Kassenprüfer 2</label><input type="text" name="auditor_2" class="form-control form-control-sm"></div>
+                <div class="col-6"><label class="form-label small">Prüfdatum</label><input type="date" name="audit_date" class="form-control form-control-sm"></div>
+                <div class="col-6">
+                    <label class="form-label small">Ergebnis</label>
+                    <select name="result" class="form-select form-select-sm">
+                        <option value="ok">Ohne Beanstandung</option>
+                        <option value="notes">Mit Hinweisen</option>
+                    </select>
+                </div>
+                <div class="col-12"><label class="form-label small">Prüfungsbemerkungen</label><textarea name="findings" class="form-control form-control-sm" rows="3"></textarea></div>
+            </div>
+            <div class="card-footer text-end"><button type="submit" class="btn btn-sm btn-primary rounded-pill px-4">Prüfbericht speichern</button></div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

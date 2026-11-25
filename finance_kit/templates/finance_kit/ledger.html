@@ -16,6 +16,18 @@
     </div>
     <div class="card-body">
         {% if can_write %}
+        <form method="post" action="{% url 'finance_kit:ledger_import_csv' %}" enctype="multipart/form-data" class="d-flex flex-wrap align-items-center gap-2 mb-3 p-2 rounded border bg-body-tertiary">
+            {% csrf_token %}
+            <span class="small fw-semibold"><i class="bi bi-upload me-1"></i>Bank-CSV importieren:</span>
+            <input type="file" name="csv_file" accept=".csv,text/csv" class="form-control form-control-sm" style="max-width: 240px;" required>
+            {% if domain_opts.accounts %}
+            <select name="account_ref" class="form-select form-select-sm" style="max-width: 180px;">
+                <option value="">— Konto —</option>
+                {% for a in domain_opts.accounts %}<option value="{{ a.ref }}">{{ a.name }}</option>{% endfor %}
+            </select>
+            {% endif %}
+            <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill">CSV einlesen</button>
+        </form>
         <form method="post" enctype="multipart/form-data" class="row g-2 mb-3 align-items-end">
             {% csrf_token %}
             <div class="col-md-2"><label class="form-label small">Datum</label><input type="date" name="date" class="form-control form-control-sm"></div>

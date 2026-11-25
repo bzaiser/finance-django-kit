@@ -10,7 +10,7 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import AssetDepreciation, BusinessDocument, DonationReceipt, FinanceSettings, LedgerEntry, MembershipFee
+from .models import AssetDepreciation, AuditReport, BusinessDocument, DonationReceipt, FinanceSettings, LedgerEntry, MembershipFee
 from .services import (
     cancel_ledger_entry,
     convert_business_doc,
@@ -18,8 +18,10 @@ from .services import (
     generate_membership_fees,
     get_account_balances,
     get_allowance_monitor,
+    get_audit_findings,
     get_domain_options,
     get_sphere_summary,
+    import_bank_csv,
     next_doc_number,
     seed_finance_categories,
 )
@@ -502,6 +504,32 @@ def fees_view(request):
                 fee.ledger_entry = entry
                 fee.save(update_fields=["status", "paid_date", "ledger_entry"])
                 messages.success(request, f"Beitrag für {fee.person_name} als bezahlt verbucht ({entry.receipt_number}).")
+        elif action == "send_reminders":
+            sent = 0
+            if apps.is_installed("domain_kit"):
+                from django.conf import settings as dj_settings
+                from django.core.mail import send_mail
+                from domain_kit.models import Person
+                cfg = FinanceSettings.get_solo()
+                open_fees = MembershipFee.objects.filter(year=year, status="open")
+                for f in open_fees:
+                    if not f.person_ref.startswith("person:"):
+                        continue
+                    pid = int(f.person_ref.split(":", 1)[1])
+                    p = Person.objects.filter(pk=pid).first()
+                    if p and p.email and "@" in p.email:
+                        try:
+                            send_mail(
+                                f"Erinnerung Mitgliedsbeitrag {year} ({cfg.org_name})",
+                                f"Hallo {f.person_name},\n\nbitte überweisen Sie Ihren offenen Mitgliedsbeitrag für {year} in Höhe von {f.amount:.2f} €.\n\nVielen Dank!\n{cfg.org_name}",
+                                getattr(dj_settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"),
+                                [p.email],
+                                fail_silently=True,
+                            )
+                            sent += 1
+                        except Exception:
+                            pass
+            messages.success(request, f"{sent} Zahlungserinnerung(en) versendet.")
         return redirect(f"{request.path}?year={year}")
 
     fees = MembershipFee.objects.filter(year=year)
@@ -514,3 +542,63 @@ def fees_view(request):
         "can_write": can_write,
         "active_tab": "fees",
     })
+
+
+@login_required
+@require_POST
+def ledger_import_csv_view(request):
+    if not _has_finance_access(request.user, write=True):
+        return HttpResponseForbidden("Kein Zugriff.")
+    f = request.FILES.get("csv_file")
+    if not f:
+        messages.error(request, "Bitte eine CSV-Datei auswählen.")
+        return redirect("finance_kit:ledger")
+    text = f.read().decode("utf-8-sig", errors="replace")
+    created, skipped = import_bank_csv(text, account_ref=(request.POST.get("account_ref") or "").strip(), user=request.user)
+    messages.success(request, f"Bank-CSV importiert: {created} neu, {skipped} übersprungen/Duplikate.")
+    return redirect("finance_kit:ledger")
+
+
+@login_required
+def audit_view(request):
+    if not _has_finance_access(request.user):
+        return HttpResponseForbidden("Kein Zugriff.")
+    can_write = _has_finance_access(request.user, write=True)
+    year = int(request.GET.get("year") or request.POST.get("year") or timezone.localdate().year)
+    if request.method == "POST":
+        if not can_write:
+            return HttpResponseForbidden("Schreibzugriff verweigert.")
+        AuditReport.objects.create(
+            year=year,
+            auditor_1=(request.POST.get("auditor_1") or "Kassenprüfer 1").strip()[:120],
+            auditor_2=(request.POST.get("auditor_2") or "").strip()[:120],
+            audit_date=request.POST.get("audit_date") or timezone.localdate(),
+            result=request.POST.get("result") if request.POST.get("result") in ("ok", "notes") else "ok",
+            findings=(request.POST.get("findings") or "").strip(),
+        )
+        messages.success(request, f"Kassenprüfungsbericht {year} gespeichert.")
+        return redirect(f"{request.path}?year={year}")
+    return render(request, "finance_kit/audit.html", {
+        "year": year,
+        "findings": get_audit_findings(year),
+        "reports": AuditReport.objects.filter(year=year),
+        "can_write": can_write,
+        "active_tab": "audit",
+    })
+
+
+@login_required
+def audit_report_pdf_view(request, pk):
+    if not _has_finance_access(request.user):
+        return HttpResponseForbidden("Kein Zugriff.")
+    rep = get_object_or_404(AuditReport, pk=pk)
+    return _render_pdf_or_html(
+        "finance_kit/audit_report_pdf.html",
+        {
+            "report": rep,
+            "cfg": FinanceSettings.get_solo(),
+            "findings": get_audit_findings(rep.year),
+            "spheres": get_sphere_summary(year=rep.year),
+        },
+        f"kassenpruefung-{rep.year}.pdf",
+    )

@@ -150,6 +150,29 @@ class FinanceKitTests(TestCase):
         rep = self.client.get(f"/finance/report/pdf/?year={date.today().year}")
         self.assertEqual(rep.status_code, 200)
 
+    def test_bank_csv_import_and_audit_report(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from finance_kit.models import AuditReport, LedgerEntry
+        csv_bytes = "Datum;Verwendungszweck;Betrag\n15.11.2026;Beitrag Huber;60,00\n16.11.2026;Miete Atelier;-450,00\n".encode("utf-8")
+        f = SimpleUploadedFile("bank.csv", csv_bytes, content_type="text/csv")
+        self.client.post("/finance/ledger/import-csv/", {"csv_file": f})
+        self.assertEqual(LedgerEntry.objects.filter(source_ref__startswith="bankcsv:").count(), 2)
+
+        f2 = SimpleUploadedFile("bank.csv", csv_bytes, content_type="text/csv")
+        self.client.post("/finance/ledger/import-csv/", {"csv_file": f2})
+        self.assertEqual(LedgerEntry.objects.filter(source_ref__startswith="bankcsv:").count(), 2)
+
+        self.client.post("/finance/audit/", {
+            "year": str(date.today().year),
+            "auditor_1": "Max Prüfer",
+            "auditor_2": "Erika Prüferin",
+            "result": "ok",
+            "findings": "Alles sauber.",
+        })
+        ar = AuditReport.objects.get(auditor_1="Max Prüfer")
+        pdf = self.client.get(f"/finance/audit/{ar.id}/pdf/")
+        self.assertEqual(pdf.status_code, 200)
+
 
 if __name__ == "__main__":
     from django.test.runner import DiscoverRunner

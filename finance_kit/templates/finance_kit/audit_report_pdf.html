@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #222; margin: 2cm; }
+  h1 { font-size: 15pt; margin-bottom: 4px; }
+  .box { border: 1px solid #444; padding: 10px; margin: 14px 0; }
+  .muted { color: #666; font-size: 9pt; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  th, td { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }
+  .right { text-align: right; }
+</style>
+</head>
+<body>
+  <div class="muted">{{ cfg.org_name }} · Kassenprüfungsbericht für die Mitgliederversammlung</div>
+  <h1>Kassenprüfungsbericht {{ report.year }}</h1>
+  <div class="muted">Prüfdatum: {{ report.audit_date|date:"d.m.Y" }} · Prüfer: {{ report.auditor_1 }}{% if report.auditor_2 %}, {{ report.auditor_2 }}{% endif %}</div>
+
+  <div class="box">
+    <strong>Prüfergebnis:</strong> {{ report.get_result_display }}<br>
+    {% if report.findings %}<p>{{ report.findings }}</p>{% endif %}
+    <div class="muted">Geprüfte Buchungen: {{ findings.total_entries }} · Buchungen ohne Beleg: {{ findings.missing_receipts_count }} · Stornos: {{ findings.cancelled_count }}</div>
+  </div>
+
+  <table>
+    <thead><tr><th>Steuerlicher Bereich</th><th class="right">Einnahmen</th><th class="right">Ausgaben</th><th class="right">Saldo</th></tr></thead>
+    <tbody>
+      {% for s in spheres %}
+      <tr>
+        <td>{{ s.label }}</td>
+        <td class="right">{{ s.income|floatformat:2 }} €</td>
+        <td class="right">{{ s.expense|floatformat:2 }} €</td>
+        <td class="right">{{ s.balance|floatformat:2 }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p style="margin-top: 36px;">____________________________________ &nbsp;&nbsp;&nbsp;&nbsp; ____________________________________<br>
+  <span class="muted">Unterschrift {{ report.auditor_1 }} &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Unterschrift {{ report.auditor_2|default:"2. Prüfer" }}</span></p>
+</body>
+</html>

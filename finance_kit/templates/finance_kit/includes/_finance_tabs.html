@@ -5,5 +5,6 @@
     <li class="nav-item"><a class="nav-link {% if active_tab == 'donations' %}active{% endif %}" href="{% url 'finance_kit:donations' %}"><i class="bi bi-heart me-1"></i>Spendenquittungen</a></li>
     <li class="nav-item"><a class="nav-link {% if active_tab == 'documents' %}active{% endif %}" href="{% url 'finance_kit:documents' %}"><i class="bi bi-receipt me-1"></i>Angebote &amp; Rechnungen</a></li>
     <li class="nav-item"><a class="nav-link {% if active_tab == 'afa' %}active{% endif %}" href="{% url 'finance_kit:afa' %}"><i class="bi bi-pc-display me-1"></i>Anlagen (AfA)</a></li>
+    <li class="nav-item"><a class="nav-link {% if active_tab == 'audit' %}active{% endif %}" href="{% url 'finance_kit:audit' %}"><i class="bi bi-clipboard-check me-1"></i>Kassenprüfung</a></li>
     <li class="nav-item"><a class="nav-link {% if active_tab == 'settings' %}active{% endif %}" href="{% url 'finance_kit:settings' %}"><i class="bi bi-gear me-1"></i>Stammdaten</a></li>
 </ul>

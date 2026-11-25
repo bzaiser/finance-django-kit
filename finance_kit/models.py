@@ -209,3 +209,24 @@ class MembershipFee(models.Model):
 
     def __str__(self):
         return f"{self.year} · {self.person_name} ({self.amount} €)"
+
+
+class AuditReport(models.Model):
+    RESULT_CHOICES = [
+        ("ok", "Kasse geprüft und für richtig befunden"),
+        ("notes", "Mit Beanstandungen / Hinweisen"),
+    ]
+
+    year = models.PositiveIntegerField(db_index=True)
+    auditor_1 = models.CharField(max_length=120)
+    auditor_2 = models.CharField(max_length=120, blank=True, default="")
+    audit_date = models.DateField(default=timezone.localdate)
+    result = models.CharField(max_length=16, choices=RESULT_CHOICES, default="ok")
+    findings = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-year", "-audit_date", "-id"]
+
+    def __str__(self):
+        return f"Kassenprüfung {self.year} ({self.audit_date:%d.%m.%Y})"

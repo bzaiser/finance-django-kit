@@ -7,13 +7,23 @@
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span class="fw-bold"><i class="bi bi-people me-1 text-primary"></i>Mitgliedsbeiträge {{ year }} ({{ paid_count }} bezahlt · {{ open_count }} offen)</span>
         {% if can_write %}
-        <form method="post" class="d-flex align-items-center gap-2">
-            {% csrf_token %}
-            <input type="hidden" name="action" value="generate">
-            <input type="hidden" name="year" value="{{ year }}">
-            <input type="text" name="default_amount" value="60.00" class="form-control form-control-sm" style="width: 80px;" title="Standardbeitrag €">
-            <button type="submit" class="btn btn-sm btn-primary rounded-pill"><i class="bi bi-plus-lg me-1"></i>Beitragsliste {{ year }} aus Personen erzeugen</button>
-        </form>
+        <div class="d-flex flex-wrap gap-2">
+            <form method="post" class="d-flex align-items-center gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="generate">
+                <input type="hidden" name="year" value="{{ year }}">
+                <input type="text" name="default_amount" value="60.00" class="form-control form-control-sm" style="width: 80px;" title="Standardbeitrag €">
+                <button type="submit" class="btn btn-sm btn-primary rounded-pill"><i class="bi bi-plus-lg me-1"></i>Beitragsliste {{ year }} aus Personen erzeugen</button>
+            </form>
+            {% if open_count %}
+            <form method="post" onsubmit="return confirm('Zahlungserinnerung an alle offenen Mitglieder per E-Mail senden?');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="send_reminders">
+                <input type="hidden" name="year" value="{{ year }}">
+                <button type="submit" class="btn btn-sm btn-outline-warning rounded-pill"><i class="bi bi-envelope me-1"></i>Erinnerungen senden</button>
+            </form>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
     <div class="table-responsive">

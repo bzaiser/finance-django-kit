@@ -1,5 +1,8 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
+import csv
+import hashlib
+import io
 
 from django.apps import apps
 from django.db import transaction
@@ -260,3 +263,79 @@ def get_domain_options() -> dict:
         except Exception:
             pass
     return {"persons": persons, "accounts": accounts, "inventories": inventories, "categories": categories}
+
+
+def _parse_csv_date(raw: str) -> date:
+    s = (raw or "").strip()
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d.%m.%y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    return timezone.localdate()
+
+
+def import_bank_csv(csv_text: str, account_ref: str = "", user=None) -> tuple[int, int]:
+    """Parse bank CSV (Datum;Beschreibung;Betrag) idempotently into LedgerEntry."""
+    text = (csv_text or "").lstrip("\ufeff").strip()
+    if not text:
+        return 0, 0
+    delim = ";" if text.count(";") >= text.count(",") else ","
+    reader = csv.DictReader(io.StringIO(text), delimiter=delim)
+    created, skipped = 0, 0
+    for row in reader:
+        norm = {str(k or "").strip().lower(): (v or "").strip() for k, v in row.items()}
+        raw_amt = norm.get("betrag") or norm.get("umsatz") or norm.get("amount") or ""
+        raw_amt_clean = raw_amt.replace(".", "").replace(",", ".") if "," in raw_amt else raw_amt
+        try:
+            amt = Decimal(raw_amt_clean)
+        except (InvalidOperation, ValueError):
+            skipped += 1
+            continue
+        if amt == 0:
+            skipped += 1
+            continue
+        b_date = _parse_csv_date(norm.get("datum") or norm.get("buchungstag") or norm.get("valuta") or "")
+        desc = (
+            norm.get("verwendungszweck")
+            or norm.get("beschreibung")
+            or norm.get("buchungstext")
+            or norm.get("empfänger")
+            or "Bankumsatz"
+        )[:220]
+        partner = (norm.get("empfänger") or norm.get("auftraggeber") or norm.get("name") or "")[:140]
+        sig = hashlib.sha1(f"{b_date.isoformat()}|{amt}|{desc}|{account_ref}".encode("utf-8")).hexdigest()[:16]
+        sref = f"bankcsv:{sig}"
+        _, was_created = LedgerEntry.objects.get_or_create(
+            source_ref=sref,
+            defaults={
+                "date": b_date,
+                "entry_type": "income" if amt > 0 else "expense",
+                "sphere": "ideell",
+                "amount": abs(amt),
+                "description": desc,
+                "person_name": partner,
+                "account_ref": account_ref[:64],
+                "receipt_number": next_doc_number("BEL", LedgerEntry, "receipt_number"),
+                "created_by": user,
+            },
+        )
+        if was_created:
+            created += 1
+        else:
+            skipped += 1
+    return created, skipped
+
+
+def get_audit_findings(year: int) -> dict:
+    qs = LedgerEntry.objects.filter(date__year=year)
+    missing_receipts = list(qs.filter(is_cancelled=False, receipt_file="").order_by("date")[:50])
+    cancelled_entries = list(qs.filter(is_cancelled=True, storno_of__isnull=True).order_by("date"))
+    allowances_over = [a for a in get_allowance_monitor(year=year) if a["status"] != "ok"]
+    return {
+        "total_entries": qs.filter(is_cancelled=False).count(),
+        "missing_receipts": missing_receipts,
+        "missing_receipts_count": qs.filter(is_cancelled=False, receipt_file="").count(),
+        "cancelled_count": len(cancelled_entries),
+        "allowances_over": allowances_over,
+    }
