@@ -253,7 +253,7 @@ def get_domain_options() -> dict:
                 accounts.append({"ref": f"account:{a.id}", "name": a.title})
             for a in AssetItem.objects.filter(asset_type="inventory"):
                 inventories.append({"ref": f"inventory:{a.id}", "name": a.title, "cost": str(a.quantity)})
-            for c in Category.for_purpose("account", "general"):
+            for c in Category.for_purpose("finance", "account", "general"):
                 categories.append({
                     "id": c.id,
                     "name": c.name,

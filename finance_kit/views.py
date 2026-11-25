@@ -172,7 +172,7 @@ def ledger_view(request):
                 from domain_kit.models import Document
                 Document.objects.create(
                     title=f"{entry.receipt_number}: {entry.description}"[:160],
-                    topic="account",
+                    topic="finance",
                     file=entry.receipt_file,
                     original_filename=getattr(entry.receipt_file, "name", "")[:180],
                     amount=entry.amount,
