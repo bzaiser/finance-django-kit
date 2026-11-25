@@ -69,8 +69,23 @@ sys.modules["tests.urls"] = sys.modules[__name__]
 class FinanceKitTests(TestCase):
     def setUp(self):
         User = get_user_model()
-        self.admin = User.objects.create_user(username="finadmin", password="pw", is_staff=True)
+        self.admin = User.objects.create_user(username="finadmin", password="pw", is_superuser=True, is_staff=True)
         self.client.force_login(self.admin)
+
+    def test_role_isolation_for_auditor_and_non_finance_staff(self):
+        from django.contrib.auth.models import Group
+        User = get_user_model()
+        staff_no_fin = User.objects.create_user(username="staff_other", password="pw", is_staff=True)
+        self.client.force_login(staff_no_fin)
+        self.assertEqual(self.client.get("/finance/").status_code, 403)
+
+        auditor = User.objects.create_user(username="auditor", password="pw", is_staff=False)
+        aud_grp, _ = Group.objects.get_or_create(name="Kassenprüfer")
+        auditor.groups.add(aud_grp)
+        self.client.force_login(auditor)
+        self.assertEqual(self.client.get("/finance/").status_code, 200)
+        self.assertEqual(self.client.post("/finance/ledger/", {"amount": "10.00", "description": "Verboten"}).status_code, 403)
+        self.assertEqual(self.client.post("/finance/audit/", {"auditor_1": "Prüfer", "result": "ok"}).status_code, 302)
 
     def test_spheres_allowance_monitor_and_donations(self):
         self.client.post("/finance/ledger/", {

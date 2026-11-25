@@ -27,11 +27,16 @@ from .services import (
 )
 
 
-def _has_finance_access(user, write: bool = False) -> bool:
+def _has_finance_access(user, write: bool = False, audit_write: bool = False) -> bool:
     if not user or not user.is_authenticated:
         return False
-    if user.is_superuser or user.is_staff:
+    if user.is_superuser:
         return True
+    gnames = set(user.groups.values_list("name", flat=True))
+    if gnames & {"Leitung / Vorstand", "Vorstand", "Buchhaltung / Kassierer"}:
+        return True
+    if "Kassenprüfer" in gnames:
+        return True if (not write or audit_write) else False
     if apps.is_installed("domain_kit"):
         try:
             from domain_kit.services import get_module_access
@@ -563,7 +568,7 @@ def ledger_import_csv_view(request):
 def audit_view(request):
     if not _has_finance_access(request.user):
         return HttpResponseForbidden("Kein Zugriff.")
-    can_write = _has_finance_access(request.user, write=True)
+    can_write = _has_finance_access(request.user, write=True, audit_write=True)
     year = int(request.GET.get("year") or request.POST.get("year") or timezone.localdate().year)
     if request.method == "POST":
         if not can_write:
