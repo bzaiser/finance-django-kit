@@ -10,14 +10,18 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .models import AssetDepreciation, BusinessDocument, DonationReceipt, FinanceSettings, LedgerEntry
+from .models import AssetDepreciation, BusinessDocument, DonationReceipt, FinanceSettings, LedgerEntry, MembershipFee
 from .services import (
+    cancel_ledger_entry,
     convert_business_doc,
     generate_due_recurring_invoices,
+    generate_membership_fees,
+    get_account_balances,
     get_allowance_monitor,
     get_domain_options,
     get_sphere_summary,
     next_doc_number,
+    seed_finance_categories,
 )
 
 
@@ -63,12 +67,15 @@ def _render_pdf_or_html(template_name: str, ctx: dict, filename: str) -> HttpRes
 def finance_dashboard_view(request):
     if not _has_finance_access(request.user):
         return HttpResponseForbidden("Kein Zugriff auf Finanzen.")
+    seed_finance_categories()
     year = timezone.localdate().year
     spheres = get_sphere_summary(year=year)
     total_income = sum((s["income"] for s in spheres), Decimal("0.00"))
     total_expense = sum((s["expense"] for s in spheres), Decimal("0.00"))
     open_invoices = BusinessDocument.objects.filter(doc_type="invoice", status__in=["draft", "sent"]).count()
+    open_fees = MembershipFee.objects.filter(year=year, status="open").count()
     allowances = get_allowance_monitor(year=year)
+    account_balances = get_account_balances(year=year)
     return render(request, "finance_kit/dashboard.html", {
         "year": year,
         "spheres": spheres,
@@ -76,10 +83,39 @@ def finance_dashboard_view(request):
         "total_expense": total_expense,
         "net_balance": total_income - total_expense,
         "open_invoices": open_invoices,
+        "open_fees": open_fees,
         "allowances": allowances,
+        "account_balances": account_balances,
         "recent_entries": LedgerEntry.objects.all()[:6],
         "active_tab": "dashboard",
     })
+
+
+@login_required
+def annual_report_pdf_view(request):
+    if not _has_finance_access(request.user):
+        return HttpResponseForbidden("Kein Zugriff.")
+    year = int(request.GET.get("year") or timezone.localdate().year)
+    spheres = get_sphere_summary(year=year)
+    total_income = sum((s["income"] for s in spheres), Decimal("0.00"))
+    total_expense = sum((s["expense"] for s in spheres), Decimal("0.00"))
+    return _render_pdf_or_html(
+        "finance_kit/annual_report_pdf.html",
+        {
+            "year": year,
+            "cfg": FinanceSettings.get_solo(),
+            "spheres": spheres,
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "net_balance": total_income - total_expense,
+            "account_balances": get_account_balances(year=year),
+            "allowances": get_allowance_monitor(year=year),
+            "donations_total": DonationReceipt.objects.filter(date_received__year=year).count(),
+            "entries_count": LedgerEntry.objects.filter(date__year=year, is_cancelled=False).count(),
+            "issued_date": timezone.localdate(),
+        },
+        f"jahresabschluss-{year}.pdf",
+    )
 
 
 @login_required
@@ -87,34 +123,62 @@ def ledger_view(request):
     if not _has_finance_access(request.user):
         return HttpResponseForbidden("Kein Zugriff auf Finanzen.")
     can_write = _has_finance_access(request.user, write=True)
+    seed_finance_categories()
     opts = get_domain_options()
     person_map = {p["ref"]: p["name"] for p in opts["persons"]}
+    cat_map = {str(c["id"]): c for c in opts["categories"]}
 
     if request.method == "POST":
         if not can_write:
             return HttpResponseForbidden("Schreibzugriff verweigert.")
         action = request.POST.get("action") or "create"
+        if action == "storno":
+            entry = get_object_or_404(LedgerEntry, pk=request.POST.get("pk"))
+            cancel_ledger_entry(entry, user=request.user)
+            messages.success(request, "Storno-Gegenbuchung erzeugt.")
+            return redirect("finance_kit:ledger")
         if action == "delete":
             LedgerEntry.objects.filter(pk=request.POST.get("pk")).delete()
             messages.success(request, "Buchung gelöscht.")
             return redirect("finance_kit:ledger")
+
         pref = (request.POST.get("person_ref") or "").strip()
-        LedgerEntry.objects.create(
+        cat_info = cat_map.get((request.POST.get("category_id") or "").strip(), {})
+        sphere = cat_info.get("sphere") or (
+            request.POST.get("sphere") if request.POST.get("sphere") in dict(LedgerEntry.SPHERE_CHOICES) else "ideell"
+        )
+        cat_name = (cat_info.get("name") or request.POST.get("category_name") or "").strip()[:80]
+        rec_no = (request.POST.get("receipt_number") or "").strip()[:60] or next_doc_number("BEL", LedgerEntry, "receipt_number")
+        entry = LedgerEntry.objects.create(
             date=request.POST.get("date") or timezone.localdate(),
-            entry_type=request.POST.get("entry_type") if request.POST.get("entry_type") in ("income", "expense") else "income",
-            sphere=request.POST.get("sphere") if request.POST.get("sphere") in dict(LedgerEntry.SPHERE_CHOICES) else "ideell",
+            entry_type=request.POST.get("entry_type") if request.POST.get("entry_type") in ("income", "expense") else (cat_info.get("default_type") or "income"),
+            sphere=sphere,
             amount=_dec(request.POST.get("amount")),
             tax_rate=_dec(request.POST.get("tax_rate")),
-            description=(request.POST.get("description") or "Buchung").strip()[:220],
-            category_name=(request.POST.get("category_name") or "").strip()[:80],
-            receipt_number=(request.POST.get("receipt_number") or "").strip()[:60],
+            description=(request.POST.get("description") or cat_name or "Buchung").strip()[:220],
+            category_name=cat_name,
+            receipt_number=rec_no,
+            receipt_file=request.FILES.get("receipt_file"),
             account_ref=(request.POST.get("account_ref") or "").strip()[:64],
             person_ref=pref[:64],
             person_name=(request.POST.get("person_name") or person_map.get(pref, "")).strip()[:140],
             tax_exempt_paragraph=(request.POST.get("tax_exempt_paragraph") or "").strip()[:16],
             created_by=request.user,
         )
-        messages.success(request, "Buchung gespeichert.")
+        if entry.receipt_file and apps.is_installed("domain_kit"):
+            try:
+                from domain_kit.models import Document
+                Document.objects.create(
+                    title=f"{entry.receipt_number}: {entry.description}"[:160],
+                    topic="account",
+                    file=entry.receipt_file,
+                    original_filename=getattr(entry.receipt_file, "name", "")[:180],
+                    amount=entry.amount,
+                    uploaded_by=request.user,
+                )
+            except Exception:
+                pass
+        messages.success(request, f"Buchung {entry.receipt_number} gespeichert.")
         return redirect("finance_kit:ledger")
 
     sphere_filter = (request.GET.get("sphere") or "").strip()
@@ -399,3 +463,54 @@ def finance_settings_view(request):
         messages.success(request, "Finanz-Einstellungen gespeichert.")
         return redirect("finance_kit:settings")
     return render(request, "finance_kit/settings.html", {"cfg": cfg, "active_tab": "settings"})
+
+
+@login_required
+def fees_view(request):
+    if not _has_finance_access(request.user):
+        return HttpResponseForbidden("Kein Zugriff.")
+    can_write = _has_finance_access(request.user, write=True)
+    year = int(request.GET.get("year") or request.POST.get("year") or timezone.localdate().year)
+
+    if request.method == "POST":
+        if not can_write:
+            return HttpResponseForbidden("Schreibzugriff verweigert.")
+        action = request.POST.get("action") or ""
+        if action == "generate":
+            cnt = generate_membership_fees(year, _dec(request.POST.get("default_amount"), Decimal("60.00")))
+            messages.success(request, f"{cnt} Beitragssatz/Beitragssätze für {year} erzeugt.")
+        elif action == "mark_paid":
+            fee = get_object_or_404(MembershipFee, pk=request.POST.get("pk"))
+            if fee.status != "paid":
+                today = timezone.localdate()
+                entry = LedgerEntry.objects.create(
+                    date=today,
+                    entry_type="income",
+                    sphere="ideell",
+                    amount=fee.amount,
+                    description=f"Mitgliedsbeitrag {fee.year}: {fee.person_name}",
+                    category_name="Mitgliedsbeiträge",
+                    receipt_number=next_doc_number("BEL", LedgerEntry, "receipt_number"),
+                    account_ref=(request.POST.get("account_ref") or "").strip()[:64],
+                    person_ref=fee.person_ref,
+                    person_name=fee.person_name[:140],
+                    source_ref=f"fee:{fee.year}:{fee.person_ref}",
+                    created_by=request.user,
+                )
+                fee.status = "paid"
+                fee.paid_date = today
+                fee.ledger_entry = entry
+                fee.save(update_fields=["status", "paid_date", "ledger_entry"])
+                messages.success(request, f"Beitrag für {fee.person_name} als bezahlt verbucht ({entry.receipt_number}).")
+        return redirect(f"{request.path}?year={year}")
+
+    fees = MembershipFee.objects.filter(year=year)
+    return render(request, "finance_kit/fees.html", {
+        "year": year,
+        "fees": fees,
+        "open_count": fees.filter(status="open").count(),
+        "paid_count": fees.filter(status="paid").count(),
+        "domain_opts": get_domain_options(),
+        "can_write": can_write,
+        "active_tab": "fees",
+    })

@@ -1,14 +1,50 @@
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.apps import apps
+from django.db import transaction
 from django.db.models import Sum
 from django.utils import timezone
 
-from .models import BusinessDocument, DonationReceipt, LedgerEntry
+from .models import BusinessDocument, DonationReceipt, LedgerEntry, MembershipFee
 
 LIMIT_3_26 = Decimal("3000.00")
 LIMIT_3_26A = Decimal("840.00")
+
+DEFAULT_FINANCE_CATEGORIES = [
+    ("Mitgliedsbeiträge", "ideell", "income"),
+    ("Spenden & Zuwendungen", "ideell", "income"),
+    ("Zuschüsse & Fördermittel", "ideell", "income"),
+    ("Kurs- & Teilnahmegebühren", "zweckbetrieb", "income"),
+    ("Ausstellungs- & Eintrittsgelder", "zweckbetrieb", "income"),
+    ("Dozenten-Honorar", "zweckbetrieb", "expense"),
+    ("Katalog- & Werkverkauf", "wirtschaftlich", "income"),
+    ("Bewirtung / Catering", "wirtschaftlich", "expense"),
+    ("Raummiete & Nebenkosten", "ideell", "expense"),
+    ("Material, Büro & Porto", "ideell", "expense"),
+    ("Zinsen & Kapitalerträge", "vermoegen", "income"),
+]
+
+
+def seed_finance_categories() -> int:
+    if not apps.is_installed("domain_kit"):
+        return 0
+    try:
+        from domain_kit.models import Category
+        if Category.objects.filter(purpose="account").exists():
+            return 0
+        created = 0
+        for idx, (name, sphere_code, default_type) in enumerate(DEFAULT_FINANCE_CATEGORIES, start=1):
+            _, was_created = Category.objects.get_or_create(
+                name=name,
+                purpose="account",
+                defaults={"code": sphere_code, "value": default_type, "position": idx * 10},
+            )
+            if was_created:
+                created += 1
+        return created
+    except Exception:
+        return 0
 
 
 def get_sphere_summary(year: int | None = None) -> list[dict]:
@@ -37,6 +73,7 @@ def get_allowance_monitor(year: int | None = None) -> list[dict]:
         LedgerEntry.objects.filter(
             date__year=target_year,
             entry_type="expense",
+            is_cancelled=False,
             tax_exempt_paragraph__in=["3_26", "3_26a"],
         )
         .values("person_ref", "person_name", "tax_exempt_paragraph")
@@ -70,6 +107,88 @@ def next_doc_number(prefix: str, model_cls, field_name: str = "doc_number") -> s
         existing += 1
         cand = f"{base}{existing:04d}"
     return cand
+
+
+def cancel_ledger_entry(entry: LedgerEntry, user=None) -> LedgerEntry:
+    """Create a GoBD-compliant counter-booking (Storno) and mark the original cancelled."""
+    if entry.is_cancelled:
+        return entry
+    with transaction.atomic():
+        entry.is_cancelled = True
+        entry.save(update_fields=["is_cancelled"])
+        storno = LedgerEntry.objects.create(
+            date=timezone.localdate(),
+            entry_type=entry.entry_type,
+            sphere=entry.sphere,
+            amount=-abs(entry.amount) if entry.amount > 0 else abs(entry.amount),
+            tax_rate=entry.tax_rate,
+            description=f"Storno zu {entry.receipt_number or entry.id}: {entry.description}"[:220],
+            category_name=entry.category_name,
+            receipt_number=next_doc_number("ST", LedgerEntry, "receipt_number"),
+            account_ref=entry.account_ref,
+            person_ref=entry.person_ref,
+            person_name=entry.person_name,
+            tax_exempt_paragraph=entry.tax_exempt_paragraph,
+            is_cancelled=True,
+            storno_of=entry,
+            created_by=user,
+        )
+    return storno
+
+
+def get_account_balances(year: int | None = None) -> list[dict]:
+    if not apps.is_installed("domain_kit"):
+        return []
+    try:
+        from domain_kit.models import AssetItem
+        rows = []
+        for acc in AssetItem.objects.filter(asset_type="account").order_by("title"):
+            ref = f"account:{acc.id}"
+            qs = LedgerEntry.objects.filter(account_ref=ref)
+            if year:
+                qs = qs.filter(date__year=year)
+            inc = qs.filter(entry_type="income").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+            exp = qs.filter(entry_type="expense").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+            opening = acc.quantity or Decimal("0.00")
+            rows.append({
+                "ref": ref,
+                "name": acc.title,
+                "identifier": acc.identifier,
+                "opening": opening,
+                "income": inc,
+                "expense": exp,
+                "balance": opening + inc - exp,
+            })
+        return rows
+    except Exception:
+        return []
+
+
+def generate_membership_fees(year: int, default_amount: Decimal = Decimal("60.00")) -> int:
+    if not apps.is_installed("domain_kit"):
+        return 0
+    from domain_kit.models import Person
+    created = 0
+    for p in Person.objects.select_related("category").all():
+        fee_amount = default_amount
+        tariff = p.category.name if p.category else "Standard"
+        if p.category and p.category.value:
+            try:
+                fee_amount = Decimal(str(p.category.value).strip().replace(",", "."))
+            except (InvalidOperation, ValueError):
+                pass
+        _, was_created = MembershipFee.objects.get_or_create(
+            year=year,
+            person_ref=f"person:{p.id}",
+            defaults={
+                "person_name": p.full_name,
+                "tariff_label": tariff,
+                "amount": fee_amount,
+            },
+        )
+        if was_created:
+            created += 1
+    return created
 
 
 def convert_business_doc(source: BusinessDocument, target_type: str) -> BusinessDocument:
@@ -119,11 +238,11 @@ def generate_due_recurring_invoices(as_of: date | None = None) -> list[BusinessD
 
 
 def get_domain_options() -> dict:
-    persons, accounts, inventories = [], [], []
+    persons, accounts, inventories, categories = [], [], [], []
     if apps.is_installed("domain_kit"):
         try:
-            from domain_kit.models import AssetItem, Person
-            for p in Person.objects.prefetch_related("addresses").all():
+            from domain_kit.models import AssetItem, Category, Person
+            for p in Person.objects.select_related("category").prefetch_related("addresses").all():
                 addr = p.addresses.first()
                 addr_str = f"{addr.street}, {addr.postal_code} {addr.city}".strip(", ") if addr else ""
                 persons.append({"ref": f"person:{p.id}", "name": p.full_name, "address": addr_str})
@@ -131,6 +250,13 @@ def get_domain_options() -> dict:
                 accounts.append({"ref": f"account:{a.id}", "name": a.title})
             for a in AssetItem.objects.filter(asset_type="inventory"):
                 inventories.append({"ref": f"inventory:{a.id}", "name": a.title, "cost": str(a.quantity)})
+            for c in Category.for_purpose("account", "general"):
+                categories.append({
+                    "id": c.id,
+                    "name": c.name,
+                    "sphere": c.code if c.code in dict(LedgerEntry.SPHERE_CHOICES) else "ideell",
+                    "default_type": c.value if c.value in ("income", "expense") else "",
+                })
         except Exception:
             pass
-    return {"persons": persons, "accounts": accounts, "inventories": inventories}
+    return {"persons": persons, "accounts": accounts, "inventories": inventories, "categories": categories}

@@ -1,0 +1,56 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Mitgliedsbeiträge ({{ year }}){% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="fw-bold"><i class="bi bi-people me-1 text-primary"></i>Mitgliedsbeiträge {{ year }} ({{ paid_count }} bezahlt · {{ open_count }} offen)</span>
+        {% if can_write %}
+        <form method="post" class="d-flex align-items-center gap-2">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="generate">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="text" name="default_amount" value="60.00" class="form-control form-control-sm" style="width: 80px;" title="Standardbeitrag €">
+            <button type="submit" class="btn btn-sm btn-primary rounded-pill"><i class="bi bi-plus-lg me-1"></i>Beitragsliste {{ year }} aus Personen erzeugen</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+            <thead><tr><th>Mitglied</th><th>Tarif / Kategorie</th><th class="text-end">Betrag</th><th>Status</th><th>Bezahlt am</th><th class="text-end">Aktion</th></tr></thead>
+            <tbody>
+                {% for f in fees %}
+                <tr>
+                    <td class="fw-semibold">{{ f.person_name }}</td>
+                    <td class="small">{{ f.tariff_label|default:"Standard" }}</td>
+                    <td class="text-end fw-bold">{{ f.amount|floatformat:2 }} €</td>
+                    <td>{% if f.status == 'paid' %}<span class="badge text-bg-success">Bezahlt</span>{% else %}<span class="badge text-bg-warning">Offen</span>{% endif %}</td>
+                    <td class="small">{{ f.paid_date|date:"d.m.Y"|default:"—" }}</td>
+                    <td class="text-end">
+                        {% if can_write and f.status != 'paid' %}
+                        <form method="post" class="d-inline-flex gap-1 align-items-center">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="mark_paid">
+                            <input type="hidden" name="year" value="{{ year }}">
+                            <input type="hidden" name="pk" value="{{ f.id }}">
+                            {% if domain_opts.accounts %}
+                            <select name="account_ref" class="form-select form-select-sm py-0" style="width: 140px;">
+                                {% for a in domain_opts.accounts %}<option value="{{ a.ref }}">{{ a.name }}</option>{% endfor %}
+                            </select>
+                            {% endif %}
+                            <button type="submit" class="btn btn-sm btn-outline-success rounded-pill">€ Bezahlt buchen</button>
+                        </form>
+                        {% elif f.ledger_entry %}
+                        <span class="small text-muted">{{ f.ledger_entry.receipt_number }}</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="6" class="text-center text-muted small py-3">Noch keine Beiträge für {{ year }} erzeugt.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #222; margin: 1.8cm; }
+  h1 { font-size: 15pt; margin-bottom: 4px; }
+  h2 { font-size: 12pt; margin-top: 18px; border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+  th, td { border-bottom: 1px solid #ddd; padding: 6px; text-align: left; }
+  th { background: #f4f4f4; }
+  .right { text-align: right; }
+  .muted { color: #666; font-size: 9pt; }
+</style>
+</head>
+<body>
+  <div class="muted">{{ cfg.org_name }} · Kassen- &amp; Jahresabschlussbericht</div>
+  <h1>Jahresabschluss {{ year }}</h1>
+  <div class="muted">Erstellt am {{ issued_date|date:"d.m.Y" }} · Aktive Buchungen: {{ entries_count }} · Spendenquittungen: {{ donations_total }}</div>
+
+  <h2>1. Gesamtergebnis (EÜR)</h2>
+  <table>
+    <tr><td>Summe Einnahmen</td><td class="right">{{ total_income|floatformat:2 }} €</td></tr>
+    <tr><td>Summe Ausgaben</td><td class="right">{{ total_expense|floatformat:2 }} €</td></tr>
+    <tr><th>Jahresergebnis</th><th class="right">{{ net_balance|floatformat:2 }} €</th></tr>
+  </table>
+
+  {% if account_balances %}
+  <h2>2. Kassen- &amp; Bankbestände</h2>
+  <table>
+    <thead><tr><th>Konto / Kasse</th><th class="right">Anfang</th><th class="right">Zugang</th><th class="right">Abgang</th><th class="right">Endbestand</th></tr></thead>
+    <tbody>
+      {% for ab in account_balances %}
+      <tr>
+        <td>{{ ab.name }}</td>
+        <td class="right">{{ ab.opening|floatformat:2 }} €</td>
+        <td class="right">{{ ab.income|floatformat:2 }} €</td>
+        <td class="right">{{ ab.expense|floatformat:2 }} €</td>
+        <td class="right"><strong>{{ ab.balance|floatformat:2 }} €</strong></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  <h2>3. Steuerliche Aufschlüsselung nach Bereichen (Finanzamt)</h2>
+  <table>
+    <thead><tr><th>Bereich</th><th class="right">Einnahmen</th><th class="right">Ausgaben</th><th class="right">Ergebnis</th></tr></thead>
+    <tbody>
+      {% for s in spheres %}
+      <tr>
+        <td>{{ s.label }}</td>
+        <td class="right">{{ s.income|floatformat:2 }} €</td>
+        <td class="right">{{ s.expense|floatformat:2 }} €</td>
+        <td class="right">{{ s.balance|floatformat:2 }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if allowances %}
+  <h2>4. Ehrenamts- &amp; Übungsleiterpauschalen (§ 3 Nr. 26 / 26a EStG)</h2>
+  <table>
+    <thead><tr><th>Person</th><th>Regelung</th><th class="right">Ausgezahlt</th><th class="right">Freibetrag</th></tr></thead>
+    <tbody>
+      {% for a in allowances %}
+      <tr>
+        <td>{{ a.person_name }}</td>
+        <td>{{ a.paragraph }}</td>
+        <td class="right">{{ a.total|floatformat:2 }} €</td>
+        <td class="right">{{ a.limit|floatformat:2 }} €</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</body>
+</html>

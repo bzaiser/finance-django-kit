@@ -49,10 +49,20 @@ class LedgerEntry(models.Model):
     description = models.CharField(max_length=220)
     category_name = models.CharField(max_length=80, blank=True, default="")
     receipt_number = models.CharField(max_length=60, blank=True, default="")
+    receipt_file = models.FileField(upload_to="finance_kit/receipts/%Y/%m/", blank=True, null=True)
     account_ref = models.CharField(max_length=64, blank=True, default="", db_index=True)
     person_ref = models.CharField(max_length=64, blank=True, default="", db_index=True)
     person_name = models.CharField(max_length=140, blank=True, default="")
     tax_exempt_paragraph = models.CharField(max_length=16, choices=TAX_EXEMPT_CHOICES, blank=True, default="")
+    is_cancelled = models.BooleanField(default=False, db_index=True)
+    storno_of = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="storno_entries",
+    )
+    source_ref = models.CharField(max_length=80, blank=True, default="", db_index=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -169,3 +179,33 @@ class AssetDepreciation(models.Model):
 
     def __str__(self):
         return f"{self.asset_title} ({self.annual_afa} €/J.)"
+
+
+class MembershipFee(models.Model):
+    STATUS_CHOICES = [
+        ("open", "Offen"),
+        ("paid", "Bezahlt"),
+    ]
+
+    year = models.PositiveIntegerField(db_index=True)
+    person_ref = models.CharField(max_length=64, db_index=True)
+    person_name = models.CharField(max_length=160)
+    tariff_label = models.CharField(max_length=80, blank=True, default="")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="open", db_index=True)
+    paid_date = models.DateField(null=True, blank=True)
+    ledger_entry = models.ForeignKey(
+        LedgerEntry,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="membership_fees",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["person_name", "id"]
+        unique_together = [("year", "person_ref")]
+
+    def __str__(self):
+        return f"{self.year} · {self.person_name} ({self.amount} €)"

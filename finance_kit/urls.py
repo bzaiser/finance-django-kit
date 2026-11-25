@@ -6,8 +6,10 @@ app_name = "finance_kit"
 
 urlpatterns = [
     path("", views.finance_dashboard_view, name="dashboard"),
+    path("report/pdf/", views.annual_report_pdf_view, name="annual_report_pdf"),
     path("ledger/", views.ledger_view, name="ledger"),
     path("ledger/csv/", views.ledger_csv_view, name="ledger_csv"),
+    path("fees/", views.fees_view, name="fees"),
     path("donations/", views.donations_view, name="donations"),
     path("donations/<int:pk>/pdf/", views.donation_pdf_view, name="donation_pdf"),
     path("documents/", views.documents_view, name="documents"),

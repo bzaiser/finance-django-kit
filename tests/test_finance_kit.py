@@ -126,6 +126,30 @@ class FinanceKitTests(TestCase):
         afa.refresh_from_db()
         self.assertEqual(afa.last_booked_year, date.today().year)
 
+    def test_storno_membership_fee_and_annual_report_pdf(self):
+        from finance_kit.models import LedgerEntry, MembershipFee
+        self.client.post("/finance/ledger/", {
+            "entry_type": "income",
+            "sphere": "ideell",
+            "amount": "100.00",
+            "description": "Testbuchung",
+        })
+        entry = LedgerEntry.objects.get(description="Testbuchung")
+        self.assertTrue(entry.receipt_number.startswith("BEL-"))
+        self.client.post("/finance/ledger/", {"action": "storno", "pk": str(entry.id)})
+        entry.refresh_from_db()
+        self.assertTrue(entry.is_cancelled)
+        self.assertTrue(LedgerEntry.objects.filter(storno_of=entry, amount=Decimal("-100.00")).exists())
+
+        fee = MembershipFee.objects.create(year=date.today().year, person_ref="person:1", person_name="Erika Mitglied", amount=Decimal("60.00"))
+        self.client.post("/finance/fees/", {"action": "mark_paid", "year": str(date.today().year), "pk": str(fee.id)})
+        fee.refresh_from_db()
+        self.assertEqual(fee.status, "paid")
+        self.assertIsNotNone(fee.ledger_entry)
+
+        rep = self.client.get(f"/finance/report/pdf/?year={date.today().year}")
+        self.assertEqual(rep.status_code, 200)
+
 
 if __name__ == "__main__":
     from django.test.runner import DiscoverRunner

@@ -3,20 +3,53 @@
 {% block content %}
 {% include "finance_kit/includes/_finance_tabs.html" %}
 
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+        <h3 class="fw-bold mb-0"><i class="bi bi-cash-coin me-2 text-primary"></i>Kassen- &amp; Finanzübersicht ({{ year }})</h3>
+        <div class="text-muted small">Einnahmen, Ausgaben, Kontostände, Mitgliedsbeiträge &amp; gesetzliche Pflichten</div>
+    </div>
+    <a href="{% url 'finance_kit:annual_report_pdf' %}?year={{ year }}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill px-3">
+        <i class="bi bi-file-earmark-pdf me-1"></i>Jahresabschluss-PDF (Kassenbericht &amp; Finanzamt)
+    </a>
+</div>
+
 <div class="kpi-bento-grid mb-4">
     {% include "design_studio/components/kpi_card.html" with title="Einnahmen" value=total_income|floatformat:2 unit="€" icon="bi-arrow-down-circle" size="sm" state=2 %}
     {% include "design_studio/components/kpi_card.html" with title="Ausgaben" value=total_expense|floatformat:2 unit="€" icon="bi-arrow-up-circle" size="sm" state=4 %}
-    {% include "design_studio/components/kpi_card.html" with title="Saldo" value=net_balance|floatformat:2 unit="€" icon="bi-wallet2" size="sm" state=1 %}
-    {% include "design_studio/components/kpi_card.html" with title="Offene Rechnungen" value=open_invoices icon="bi-receipt" size="sm" state=3 %}
+    {% include "design_studio/components/kpi_card.html" with title="Jahresergebnis" value=net_balance|floatformat:2 unit="€" icon="bi-wallet2" size="sm" state=1 %}
+    {% include "design_studio/components/kpi_card.html" with title="Offene Beiträge" value=open_fees icon="bi-people" size="sm" state=3 %}
+    {% include "design_studio/components/kpi_card.html" with title="Offene Rechnungen" value=open_invoices icon="bi-receipt" size="sm" state=5 %}
 </div>
 
 <div class="row g-3">
-    <div class="col-12 col-lg-7">
-        <div class="card shadow-sm h-100">
-            <div class="card-header fw-bold"><i class="bi bi-diagram-3 me-2 text-primary"></i>Sphärentrennung ({{ year }})</div>
+    <div class="col-12 col-lg-7 d-flex flex-column gap-3">
+        {% if account_balances %}
+        <div class="card shadow-sm">
+            <div class="card-header fw-bold"><i class="bi bi-bank me-2 text-primary"></i>Konten &amp; Barkasse (aus Assets → Konten)</div>
             <div class="table-responsive">
                 <table class="table table-sm table-hover align-middle mb-0">
-                    <thead><tr><th>Bereich</th><th class="text-end">Einnahmen</th><th class="text-end">Ausgaben</th><th class="text-end">Ergebnis</th></tr></thead>
+                    <thead><tr><th>Konto / Kasse</th><th class="text-end">Anfang</th><th class="text-end">Zugang</th><th class="text-end">Abgang</th><th class="text-end">Aktuell</th></tr></thead>
+                    <tbody>
+                        {% for ab in account_balances %}
+                        <tr>
+                            <td class="fw-semibold">{{ ab.name }}{% if ab.identifier %} <span class="small text-muted">({{ ab.identifier }})</span>{% endif %}</td>
+                            <td class="text-end small">{{ ab.opening|floatformat:2 }} €</td>
+                            <td class="text-end text-success small">+{{ ab.income|floatformat:2 }} €</td>
+                            <td class="text-end text-danger small">-{{ ab.expense|floatformat:2 }} €</td>
+                            <td class="text-end fw-bold">{{ ab.balance|floatformat:2 }} €</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card shadow-sm">
+            <div class="card-header fw-bold"><i class="bi bi-diagram-3 me-2 text-primary"></i>Steuerliche Aufschlüsselung fürs Finanzamt ({{ year }})</div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0">
+                    <thead><tr><th>Steuerlicher Bereich</th><th class="text-end">Einnahmen</th><th class="text-end">Ausgaben</th><th class="text-end">Ergebnis</th></tr></thead>
                     <tbody>
                         {% for s in spheres %}
                         <tr>
