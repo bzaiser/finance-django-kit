@@ -1,0 +1,52 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Anlagenverzeichnis (AfA){% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="card shadow-sm">
+    <div class="card-header fw-bold"><i class="bi bi-pc-display me-1"></i>Anlagenverzeichnis &amp; Abschreibungen (AfA)</div>
+    <div class="card-body">
+        {% if can_write %}
+        <form method="post" class="row g-2 mb-3 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-3">
+                <label class="form-label small">Inventar-Verknüpfung (optional)</label>
+                <select name="asset_ref" class="form-select form-select-sm">
+                    <option value="">— Manuell —</option>
+                    {% for i in domain_opts.inventories %}<option value="{{ i.ref }}">{{ i.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label small">oder Bezeichnung</label><input type="text" name="asset_title" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small">Anschaffung</label><input type="date" name="acquisition_date" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small">Wert (€)</label><input type="text" name="acquisition_cost" class="form-control form-control-sm" required></div>
+            <div class="col-md-1"><label class="form-label small">Jahre</label><input type="number" name="useful_life_years" class="form-control form-control-sm" value="5" min="1"></div>
+            <div class="col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill">+</button></div>
+        </form>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Anlagegut</th><th>Anschaffung</th><th class="text-end">AK (€)</th><th class="text-end">Nutzung</th><th class="text-end">AfA / Jahr</th><th>Gebucht bis</th><th class="text-end">Aktion</th></tr></thead>
+                <tbody>
+                    {% for a in assets %}
+                    <tr>
+                        <td class="fw-semibold">{{ a.asset_title }}</td>
+                        <td class="small">{{ a.acquisition_date|date:"d.m.Y" }}</td>
+                        <td class="text-end">{{ a.acquisition_cost|floatformat:2 }} €</td>
+                        <td class="text-end small">{{ a.useful_life_years }} J.</td>
+                        <td class="text-end fw-bold">{{ a.annual_afa|floatformat:2 }} €</td>
+                        <td class="small">{{ a.last_booked_year|default:"—" }}</td>
+                        <td class="text-end">
+                            {% if can_write and a.last_booked_year != current_year %}
+                            <form method="post" action="{% url 'finance_kit:afa_book' a.id %}" class="d-inline">{% csrf_token %}<button type="submit" class="btn btn-sm btn-outline-success rounded-pill">AfA {{ current_year }} buchen</button></form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted small py-3">Noch keine Anlagegüter erfasst.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

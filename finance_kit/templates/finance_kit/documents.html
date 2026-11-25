@@ -1,0 +1,72 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Angebote, Aufträge &amp; Rechnungen{% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="card shadow-sm">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="fw-bold"><i class="bi bi-receipt me-1"></i>Angebote, Auftragsbestätigungen &amp; Rechnungen</span>
+        {% if can_write %}
+        <form method="post" action="{% url 'finance_kit:run_recurring' %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-sm btn-outline-primary rounded-pill"><i class="bi bi-arrow-repeat me-1"></i>Fällige Abo-Rechnungen erzeugen</button>
+        </form>
+        {% endif %}
+    </div>
+    <div class="card-body">
+        {% if can_write %}
+        <form method="post" class="row g-2 mb-3 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-2">
+                <label class="form-label small">Belegart</label>
+                <select name="doc_type" class="form-select form-select-sm">{% for dk, dl in doc_type_choices %}<option value="{{ dk }}">{{ dl }}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Empfänger (Person)</label>
+                <select name="recipient_ref" class="form-select form-select-sm">
+                    <option value="">— Manuell —</option>
+                    {% for p in domain_opts.persons %}<option value="{{ p.ref }}">{{ p.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label small">oder Name manuell</label><input type="text" name="recipient_name" class="form-control form-control-sm"></div>
+            <div class="col-md-4"><label class="form-label small">Betreff / Leistung</label><input type="text" name="subject" class="form-control form-control-sm" required></div>
+            <div class="col-md-2"><label class="form-label small">Netto (€)</label><input type="text" name="total_net" class="form-control form-control-sm" required></div>
+            <div class="col-md-2"><label class="form-label small">USt (%)</label><input type="text" name="tax_rate" class="form-control form-control-sm" value="{% if cfg.small_business_rule %}0.00{% else %}{{ cfg.default_vat_rate }}{% endif %}"></div>
+            <div class="col-md-2"><label class="form-label small">Datum</label><input type="date" name="issue_date" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small">Intervall (Mon.)</label><input type="number" name="recurrence_months" class="form-control form-control-sm" value="12" min="1"></div>
+            <div class="col-md-2"><div class="form-check mb-1"><input type="checkbox" name="is_recurring" class="form-check-input" id="isRecChk"><label class="form-check-label small" for="isRecChk">Wiederkehrend</label></div></div>
+            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill">Anlegen</button></div>
+        </form>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Beleg-Nr.</th><th>Typ</th><th>Empfänger</th><th>Betreff</th><th>Status</th><th class="text-end">Brutto</th><th class="text-end">Aktion</th></tr></thead>
+                <tbody>
+                    {% for d in docs %}
+                    <tr>
+                        <td class="fw-semibold">{{ d.doc_number }}{% if d.is_recurring %} <span class="badge text-bg-info">Abo</span>{% endif %}</td>
+                        <td class="small">{{ d.get_doc_type_display }}</td>
+                        <td>{{ d.recipient_name }}</td>
+                        <td class="small">{{ d.subject }}</td>
+                        <td><span class="badge {% if d.status == 'paid' %}text-bg-success{% else %}bg-body-secondary text-body border{% endif %}">{{ d.get_status_display }}</span></td>
+                        <td class="text-end fw-bold">{{ d.total_gross|floatformat:2 }} €</td>
+                        <td class="text-end">
+                            <a href="{% url 'finance_kit:document_pdf' d.id %}" target="_blank" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-file-earmark-pdf"></i></a>
+                            {% if can_write and d.doc_type == 'quote' %}
+                            <form method="post" action="{% url 'finance_kit:document_convert' d.id %}" class="d-inline">{% csrf_token %}<input type="hidden" name="target_type" value="order"><button type="submit" class="btn btn-sm btn-outline-primary rounded-pill">→ AB</button></form>
+                            <form method="post" action="{% url 'finance_kit:document_convert' d.id %}" class="d-inline">{% csrf_token %}<input type="hidden" name="target_type" value="invoice"><button type="submit" class="btn btn-sm btn-outline-success rounded-pill">→ Rechnung</button></form>
+                            {% endif %}
+                            {% if can_write and d.doc_type == 'invoice' and d.status != 'paid' %}
+                            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="mark_paid"><input type="hidden" name="pk" value="{{ d.id }}"><button type="submit" class="btn btn-sm btn-outline-success rounded-pill">€ Bezahlt</button></form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="7" class="text-center text-muted small py-3">Noch keine Belege angelegt.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

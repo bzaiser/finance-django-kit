@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finance-django-kit"
+version = "0.1.0"
+description = "Wiederverwendbares Finanz-, Spenden-, Rechnungs- und AfA-Modul für den Django-Baukasten"
+requires-python = ">=3.11"
+dependencies = [
+    "Django>=4.2",
+]
+
+[tool.setuptools.packages.find]
+include = ["finance_kit*"]
+
+[tool.setuptools.package-data]
+finance_kit = ["templates/**/*.html"]

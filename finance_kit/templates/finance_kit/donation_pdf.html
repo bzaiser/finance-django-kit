@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font-family: Helvetica, Arial, sans-serif; font-size: 10pt; color: #222; margin: 2cm; }
+  h1 { font-size: 14pt; margin-bottom: 4px; }
+  .box { border: 1px solid #444; padding: 10px; margin: 12px 0; }
+  .muted { color: #555; font-size: 9pt; }
+</style>
+</head>
+<body>
+  <div class="muted">Bestätigung über {{ receipt.get_donation_type_display }} im Sinne des § 10b EStG · Beleg-Nr.: {{ receipt.receipt_number }}</div>
+  <h1>Zuwendungsbestätigung</h1>
+  <p><strong>Aussteller:</strong> {{ cfg.org_name }}<br>{% if cfg.org_address %}{{ cfg.org_address }}{% endif %}</p>
+
+  <div class="box">
+    <strong>Name und Anschrift des Zuwendenden:</strong><br>
+    {{ receipt.donor_name }}<br>
+    {% if receipt.donor_address %}{{ receipt.donor_address }}{% endif %}
+  </div>
+
+  <p>
+    <strong>Betrag der Zuwendung (Ziffern):</strong> {{ receipt.amount|floatformat:2 }} €<br>
+    <strong>Tag der Zuwendung:</strong> {{ receipt.date_received|date:"d.m.Y" }}<br>
+    <strong>Begünstigter Zweck:</strong> {{ receipt.purpose_note }}
+  </p>
+
+  <div class="box muted">
+    Wir sind wegen Förderung von {{ receipt.purpose_note }} nach dem Freistellungsbescheid des Finanzamtes {{ cfg.tax_office|default:"—" }} (StNr. {{ cfg.tax_number|default:"—" }}){% if cfg.exemption_date %} vom {{ cfg.exemption_date|date:"d.m.Y" }}{% endif %} als gemeinnützig anerkannt.
+    Es wird bestätigt, dass die Zuwendung nur zur Förderung des angegebenen Zwecks verwendet wird.
+  </div>
+
+  <p class="muted" style="margin-top: 28px;">Ausgestellt am {{ receipt.issued_at|date:"d.m.Y" }} · Maschinell erstellt</p>
+</body>
+</html>

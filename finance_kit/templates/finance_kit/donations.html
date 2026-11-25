@@ -1,0 +1,54 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Zuwendungsbestätigungen (Spendenquittungen){% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="card shadow-sm">
+    <div class="card-header fw-bold"><i class="bi bi-heart me-1 text-danger"></i>Zuwendungsbestätigungen</div>
+    <div class="card-body">
+        {% if can_write %}
+        <form method="post" class="row g-2 mb-3 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-3">
+                <label class="form-label small">Spender (aus Personen)</label>
+                <select name="donor_ref" class="form-select form-select-sm">
+                    <option value="">— Manuell eingeben —</option>
+                    {% for p in domain_opts.persons %}<option value="{{ p.ref }}">{{ p.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3"><label class="form-label small">oder Name manuell</label><input type="text" name="donor_name" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small">Betrag (€)</label><input type="text" name="amount" class="form-control form-control-sm" required></div>
+            <div class="col-md-2"><label class="form-label small">Eingangsdatum</label><input type="date" name="date_received" class="form-control form-control-sm"></div>
+            <div class="col-md-2"><label class="form-label small">Art</label><select name="donation_type" class="form-select form-select-sm"><option value="cash">Geldzuwendung</option><option value="in_kind">Sachzuwendung</option></select></div>
+            <div class="col-md-5"><label class="form-label small">Adresse (falls manuell)</label><input type="text" name="donor_address" class="form-control form-control-sm"></div>
+            <div class="col-md-5"><label class="form-label small">Begünstigter Zweck</label><input type="text" name="purpose_note" class="form-control form-control-sm" value="Förderung von Kunst und Kultur"></div>
+            <div class="col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill">Quittung erstellen</button></div>
+        </form>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Nr.</th><th>Datum</th><th>Spender</th><th>Art</th><th class="text-end">Betrag</th><th class="text-end">Aktion</th></tr></thead>
+                <tbody>
+                    {% for r in receipts %}
+                    <tr>
+                        <td class="fw-semibold">{{ r.receipt_number }}</td>
+                        <td class="small">{{ r.date_received|date:"d.m.Y" }}</td>
+                        <td>{{ r.donor_name }}</td>
+                        <td class="small">{{ r.get_donation_type_display }}</td>
+                        <td class="text-end fw-bold">{{ r.amount|floatformat:2 }} €</td>
+                        <td class="text-end">
+                            <a href="{% url 'finance_kit:donation_pdf' r.id %}" target="_blank" class="btn btn-sm btn-outline-success rounded-pill"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+                            {% if can_write %}
+                            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="pk" value="{{ r.id }}"><button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i></button></form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted small py-3">Noch keine Zuwendungsbestätigungen erstellt.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

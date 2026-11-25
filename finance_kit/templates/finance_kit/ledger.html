@@ -1,0 +1,81 @@
+{% extends "design_studio/layouts/base.html" %}
+{% block title %}Buchungsjournal{% endblock %}
+{% block content %}
+{% include "finance_kit/includes/_finance_tabs.html" %}
+
+<div class="card shadow-sm mb-3">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <span class="fw-bold"><i class="bi bi-journal-text me-1"></i>Buchungsjournal</span>
+        <div class="d-flex flex-wrap gap-1">
+            <a href="{% url 'finance_kit:ledger' %}" class="btn btn-sm {% if not sphere_filter %}btn-primary{% else %}btn-light{% endif %} rounded-pill">Alle</a>
+            {% for sk, sl in sphere_choices %}
+            <a href="{% url 'finance_kit:ledger' %}?sphere={{ sk }}" class="btn btn-sm {% if sphere_filter == sk %}btn-primary{% else %}btn-light{% endif %} rounded-pill">{{ sl }}</a>
+            {% endfor %}
+            <a href="{% url 'finance_kit:ledger_csv' %}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+        </div>
+    </div>
+    <div class="card-body">
+        {% if can_write %}
+        <form method="post" class="row g-2 mb-3 align-items-end">
+            {% csrf_token %}
+            <div class="col-md-2"><label class="form-label small">Datum</label><input type="date" name="date" class="form-control form-control-sm"></div>
+            <div class="col-md-2">
+                <label class="form-label small">Typ</label>
+                <select name="entry_type" class="form-select form-select-sm"><option value="income">Einnahme</option><option value="expense">Ausgabe</option></select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small">Sphäre</label>
+                <select name="sphere" class="form-select form-select-sm">{% for sk, sl in sphere_choices %}<option value="{{ sk }}">{{ sl }}</option>{% endfor %}</select>
+            </div>
+            <div class="col-md-2"><label class="form-label small">Betrag (€)</label><input type="text" name="amount" class="form-control form-control-sm" placeholder="0.00" required></div>
+            <div class="col-md-4"><label class="form-label small">Beschreibung</label><input type="text" name="description" class="form-control form-control-sm" required></div>
+            <div class="col-md-3">
+                <label class="form-label small">Person (optional)</label>
+                <select name="person_ref" class="form-select form-select-sm">
+                    <option value="">—</option>
+                    {% for p in domain_opts.persons %}<option value="{{ p.ref }}">{{ p.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Konto (optional)</label>
+                <select name="account_ref" class="form-select form-select-sm">
+                    <option value="">—</option>
+                    {% for a in domain_opts.accounts %}<option value="{{ a.ref }}">{{ a.name }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small">Pauschale (§ 3 EStG)</label>
+                <select name="tax_exempt_paragraph" class="form-select form-select-sm">
+                    {% for tk, tl in tax_exempt_choices %}<option value="{{ tk }}">{{ tl }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2"><label class="form-label small">Beleg-Nr.</label><input type="text" name="receipt_number" class="form-control form-control-sm"></div>
+            <div class="col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100 rounded-pill">+</button></div>
+        </form>
+        {% endif %}
+        <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+                <thead><tr><th>Datum</th><th>Sphäre</th><th>Beschreibung</th><th>Person</th><th class="text-end">Betrag</th><th class="text-end">Aktion</th></tr></thead>
+                <tbody>
+                    {% for e in entries %}
+                    <tr>
+                        <td class="small">{{ e.date|date:"d.m.Y" }}</td>
+                        <td><span class="badge bg-body-secondary text-body border">{{ e.get_sphere_display }}</span></td>
+                        <td class="fw-semibold">{{ e.description }}{% if e.tax_exempt_paragraph %} <span class="badge text-bg-info">{{ e.get_tax_exempt_paragraph_display }}</span>{% endif %}</td>
+                        <td class="small">{{ e.person_name|default:"—" }}</td>
+                        <td class="text-end fw-bold {% if e.entry_type == 'income' %}text-success{% else %}text-danger{% endif %}">{% if e.entry_type == 'expense' %}-{% endif %}{{ e.amount|floatformat:2 }} €</td>
+                        <td class="text-end">
+                            {% if can_write %}
+                            <form method="post" class="d-inline">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="pk" value="{{ e.id }}"><button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash"></i></button></form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="6" class="text-center text-muted small py-3">Keine Buchungen vorhanden.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

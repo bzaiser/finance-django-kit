@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: finance-django-kit
+Version: 0.1.0
+Summary: Wiederverwendbares Finanz-, Spenden-, Rechnungs- und AfA-Modul für den Django-Baukasten
+Requires-Python: >=3.11
+Requires-Dist: Django>=4.2
