@@ -145,10 +145,13 @@ def ledger_view(request):
             messages.success(request, "Storno-Gegenbuchung erzeugt.")
             return redirect("finance_kit:ledger")
         if action == "delete":
-            LedgerEntry.objects.filter(pk=request.POST.get("pk")).delete()
-            messages.success(request, "Buchung gelöscht.")
+            messages.warning(request, "Direktes Löschen von Buchungen ist GoBD-widrig. Bitte verwenden Sie die Storno-Funktion.")
             return redirect("finance_kit:ledger")
 
+        amt = _dec(request.POST.get("amount"))
+        if amt <= Decimal("0.00"):
+            messages.error(request, "Betrag muss größer als 0,00 € sein.")
+            return redirect("finance_kit:ledger")
         pref = (request.POST.get("person_ref") or "").strip()
         cat_info = cat_map.get((request.POST.get("category_id") or "").strip(), {})
         sphere = cat_info.get("sphere") or (
@@ -160,7 +163,7 @@ def ledger_view(request):
             date=request.POST.get("date") or timezone.localdate(),
             entry_type=request.POST.get("entry_type") if request.POST.get("entry_type") in ("income", "expense") else (cat_info.get("default_type") or "income"),
             sphere=sphere,
-            amount=_dec(request.POST.get("amount")),
+            amount=amt,
             tax_rate=_dec(request.POST.get("tax_rate")),
             description=(request.POST.get("description") or cat_name or "Buchung").strip()[:220],
             category_name=cat_name,
@@ -179,9 +182,9 @@ def ledger_view(request):
                     title=f"{entry.receipt_number}: {entry.description}"[:160],
                     topic="finance",
                     file=entry.receipt_file,
-                    original_filename=getattr(entry.receipt_file, "name", "")[:180],
+                    file_name=getattr(entry.receipt_file, "name", "")[:180],
                     amount=entry.amount,
-                    uploaded_by=request.user,
+                    document_date=entry.date,
                 )
             except Exception:
                 pass
@@ -238,11 +241,14 @@ def donations_view(request):
         if not can_write:
             return HttpResponseForbidden("Schreibzugriff verweigert.")
         if request.POST.get("action") == "delete":
-            DonationReceipt.objects.filter(pk=request.POST.get("pk")).delete()
+            messages.warning(request, "Ausgestellte Zuwendungsbestätigungen dürfen nach § 10b EStG nicht gelöscht werden.")
             return redirect("finance_kit:donations")
         dref = (request.POST.get("donor_ref") or "").strip()
         pinfo = person_map.get(dref, {})
         amt = _dec(request.POST.get("amount"))
+        if amt <= Decimal("0.00"):
+            messages.error(request, "Spendenbetrag muss größer als 0,00 € sein.")
+            return redirect("finance_kit:donations")
         d_date = request.POST.get("date_received") or timezone.localdate()
         dname = (request.POST.get("donor_name") or pinfo.get("name") or "Spender").strip()[:160]
         daddr = (request.POST.get("donor_address") or pinfo.get("address") or "").strip()
@@ -305,13 +311,32 @@ def documents_view(request):
             return HttpResponseForbidden("Schreibzugriff verweigert.")
         action = request.POST.get("action") or "create"
         if action == "delete":
-            BusinessDocument.objects.filter(pk=request.POST.get("pk")).delete()
+            deleted_cnt, _ = BusinessDocument.objects.filter(pk=request.POST.get("pk"), status="draft").delete()
+            if not deleted_cnt:
+                messages.warning(request, "Nur Entwürfe dürfen gelöscht werden (GoBD).")
             return redirect("finance_kit:documents")
         if action == "mark_paid":
             doc = get_object_or_404(BusinessDocument, pk=request.POST.get("pk"))
             doc.status = "paid"
             doc.save(update_fields=["status"])
-            messages.success(request, f"{doc.doc_number} als bezahlt markiert.")
+            if doc.doc_type == "invoice" and doc.total_gross > Decimal("0.00"):
+                LedgerEntry.objects.get_or_create(
+                    source_ref=f"doc:{doc.id}:paid",
+                    defaults={
+                        "date": timezone.localdate(),
+                        "entry_type": "income",
+                        "sphere": "wirtschaftlich" if doc.tax_rate > Decimal("0.00") else "zweckbetrieb",
+                        "amount": doc.total_gross,
+                        "tax_rate": doc.tax_rate,
+                        "description": f"Rechnung bezahlt: {doc.doc_number} ({doc.recipient_name})"[:220],
+                        "category_name": "Rechnungseingang",
+                        "receipt_number": next_doc_number("BEL", LedgerEntry, "receipt_number"),
+                        "person_ref": doc.recipient_ref[:64],
+                        "person_name": doc.recipient_name[:140],
+                        "created_by": request.user,
+                    },
+                )
+            messages.success(request, f"{doc.doc_number} als bezahlt markiert und im Kassenbuch erfasst.")
             return redirect("finance_kit:documents")
 
         dtype = request.POST.get("doc_type") if request.POST.get("doc_type") in dict(BusinessDocument.DOC_TYPE_CHOICES) else "quote"

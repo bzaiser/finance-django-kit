@@ -120,7 +120,7 @@ def cancel_ledger_entry(entry: LedgerEntry, user=None) -> LedgerEntry:
         entry.is_cancelled = True
         entry.save(update_fields=["is_cancelled"])
         storno = LedgerEntry.objects.create(
-            date=timezone.localdate(),
+            date=entry.date,
             entry_type=entry.entry_type,
             sphere=entry.sphere,
             amount=-abs(entry.amount) if entry.amount > 0 else abs(entry.amount),
@@ -136,6 +136,7 @@ def cancel_ledger_entry(entry: LedgerEntry, user=None) -> LedgerEntry:
             storno_of=entry,
             created_by=user,
         )
+        MembershipFee.objects.filter(ledger_entry=entry).update(status="open", ledger_entry=None)
     return storno
 
 
@@ -147,12 +148,18 @@ def get_account_balances(year: int | None = None) -> list[dict]:
         rows = []
         for acc in AssetItem.objects.filter(asset_type="account").order_by("title"):
             ref = f"account:{acc.id}"
-            qs = LedgerEntry.objects.filter(account_ref=ref)
+            base_qs = LedgerEntry.objects.filter(account_ref=ref)
+            opening = acc.quantity or Decimal("0.00")
             if year:
-                qs = qs.filter(date__year=year)
+                prior_qs = base_qs.filter(date__year__lt=year)
+                prior_inc = prior_qs.filter(entry_type="income").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+                prior_exp = prior_qs.filter(entry_type="expense").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+                opening = opening + prior_inc - prior_exp
+                qs = base_qs.filter(date__year=year)
+            else:
+                qs = base_qs
             inc = qs.filter(entry_type="income").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
             exp = qs.filter(entry_type="expense").aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
-            opening = acc.quantity or Decimal("0.00")
             rows.append({
                 "ref": ref,
                 "name": acc.title,
@@ -173,13 +180,20 @@ def generate_membership_fees(year: int, default_amount: Decimal = Decimal("60.00
     from domain_kit.models import Person
     created = 0
     for p in Person.objects.select_related("category").all():
+        cat_name = (p.category.name if p.category else "").strip().lower()
+        if any(skip in cat_name for skip in ("gast", "extern", "dienstleister", "lieferant", "partner")):
+            continue
         fee_amount = default_amount
         tariff = p.category.name if p.category else "Standard"
         if p.category and p.category.value:
             try:
-                fee_amount = Decimal(str(p.category.value).strip().replace(",", "."))
+                parsed = Decimal(str(p.category.value).strip().replace(",", "."))
+                if parsed > Decimal("0.00"):
+                    fee_amount = parsed
             except (InvalidOperation, ValueError):
                 pass
+        if fee_amount <= Decimal("0.00"):
+            continue
         _, was_created = MembershipFee.objects.get_or_create(
             year=year,
             person_ref=f"person:{p.id}",
