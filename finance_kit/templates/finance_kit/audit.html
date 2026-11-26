@@ -2,6 +2,7 @@
 {% block title %}Kassenprüfung ({{ year }}){% endblock %}
 {% block content %}
 {% include "finance_kit/includes/_finance_tabs.html" %}
+<div class="ds-tab-panel">
 
 <div class="kpi-bento-grid mb-4">
     {% include "design_studio/components/kpi_card.html" with title="Aktive Buchungen" value=findings.total_entries icon="bi-journal-check" size="sm" state=1 %}
@@ -74,5 +75,6 @@
         </form>
         {% endif %}
     </div>
+</div>
 </div>
 {% endblock %}

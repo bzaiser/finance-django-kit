@@ -2,16 +2,17 @@
 {% block title %}Einnahmen &amp; Ausgaben{% endblock %}
 {% block content %}
 {% include "finance_kit/includes/_finance_tabs.html" %}
+<div class="ds-tab-panel">
 
 <div class="card shadow-sm mb-3">
     <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
         <span class="fw-bold"><i class="bi bi-journal-text me-1"></i>Buchungsjournal (Kassenbuch)</span>
         <div class="d-flex flex-wrap gap-1">
-            <a href="{% url 'finance_kit:ledger' %}" class="btn btn-sm {% if not sphere_filter %}btn-primary{% else %}btn-light{% endif %} rounded-pill">Alle</a>
+            <a href="{% url 'finance_kit:ledger' %}" class="btn btn-sm ds-glass-btn {% if not sphere_filter %}fw-bold border-primary{% endif %} rounded-pill">Alle</a>
             {% for sk, sl in sphere_choices %}
-            <a href="{% url 'finance_kit:ledger' %}?sphere={{ sk }}" class="btn btn-sm {% if sphere_filter == sk %}btn-primary{% else %}btn-light{% endif %} rounded-pill">{{ sl }}</a>
+            <a href="{% url 'finance_kit:ledger' %}?sphere={{ sk }}" class="btn btn-sm ds-glass-btn {% if sphere_filter == sk %}fw-bold border-primary{% endif %} rounded-pill">{{ sl }}</a>
             {% endfor %}
-            <a href="{% url 'finance_kit:ledger_csv' %}" class="btn btn-sm btn-outline-secondary rounded-pill"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+            <a href="{% url 'finance_kit:ledger_csv' %}" class="btn btn-sm ds-glass-btn rounded-pill"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
         </div>
     </div>
     <div class="card-body">
@@ -109,4 +110,5 @@ document.getElementById("finCatSel")?.addEventListener("change", function () {
     if (tp && typeSel) typeSel.value = tp;
 });
 </script>
+</div>
 {% endblock %}
