@@ -6,7 +6,7 @@ from django.utils import timezone
 
 
 class FinanceSettings(models.Model):
-    org_name = models.CharField(max_length=160, default="Kunstverein")
+    org_name = models.CharField(max_length=160, default="Organisation")
     org_address = models.TextField(blank=True, default="")
     tax_number = models.CharField(max_length=80, blank=True, default="")
     tax_office = models.CharField(max_length=120, blank=True, default="")

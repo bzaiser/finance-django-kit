@@ -33,7 +33,8 @@ def _has_finance_access(user, write: bool = False, audit_write: bool = False) ->
     if user.is_superuser:
         return True
     gnames = set(user.groups.values_list("name", flat=True))
-    if gnames & {"Leitung / Vorstand", "Vorstand", "Buchhaltung / Kassierer"}:
+    from design_studio.permissions import get_role_group_names
+    if gnames & set(get_role_group_names("finance")):
         return True
     if "Kassenprüfer" in gnames:
         return True if (not write or audit_write) else False
