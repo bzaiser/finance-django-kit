@@ -561,6 +561,17 @@ def fees_view(request):
                         except Exception:
                             pass
             messages.success(request, f"{sent} Zahlungserinnerung(en) versendet.")
+        elif action == "delete_fee":
+            fee = get_object_or_404(MembershipFee, pk=request.POST.get("pk"))
+            if fee.status == "paid":
+                messages.warning(request, f"Bezahlter Beitrag für {fee.person_name} kann nicht gelöscht werden (bitte ggf. im Kassenbuch stornieren).")
+            else:
+                name = fee.person_name
+                fee.delete()
+                messages.success(request, f"Offener Beitrag für {name} gelöscht.")
+        elif action == "delete_open":
+            deleted, _ = MembershipFee.objects.filter(year=year, status="open").delete()
+            messages.success(request, f"{deleted} offene(r) Beitragssatz/Beitragssätze für {year} gelöscht.")
         return redirect(f"{request.path}?year={year}")
 
     fees = MembershipFee.objects.filter(year=year)

@@ -23,6 +23,12 @@
                 <input type="hidden" name="year" value="{{ year }}">
                 <button type="submit" class="btn btn-sm btn-outline-warning rounded-pill"><i class="bi bi-envelope me-1"></i>Erinnerungen senden</button>
             </form>
+            <form method="post" onsubmit="return confirm('Alle offenen Beiträge für {{ year }} wirklich löschen? Bezahlte Beiträge bleiben erhalten.');">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="delete_open">
+                <input type="hidden" name="year" value="{{ year }}">
+                <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill"><i class="bi bi-trash3 me-1"></i>Offene löschen</button>
+            </form>
             {% endif %}
         </div>
         {% endif %}
@@ -51,6 +57,13 @@
                             </select>
                             {% endif %}
                             <button type="submit" class="btn btn-sm btn-outline-success rounded-pill">€ Bezahlt buchen</button>
+                        </form>
+                        <form method="post" class="d-inline ms-1" onsubmit="return confirm('Offenen Beitrag für {{ f.person_name|escapejs }} wirklich löschen?');">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete_fee">
+                            <input type="hidden" name="year" value="{{ year }}">
+                            <input type="hidden" name="pk" value="{{ f.id }}">
+                            <button type="submit" class="btn btn-sm btn-outline-danger rounded-pill" title="Offenen Beitrag löschen"><i class="bi bi-trash3"></i></button>
                         </form>
                         {% elif f.ledger_entry %}
                         <span class="small text-muted">{{ f.ledger_entry.receipt_number }}</span>

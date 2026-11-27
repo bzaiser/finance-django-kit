@@ -162,6 +162,17 @@ class FinanceKitTests(TestCase):
         self.assertEqual(fee.status, "paid")
         self.assertIsNotNone(fee.ledger_entry)
 
+        # Paid fee cannot be deleted; open fees can be deleted individually or in bulk
+        self.client.post("/finance/fees/", {"action": "delete_fee", "year": str(date.today().year), "pk": str(fee.id)})
+        self.assertTrue(MembershipFee.objects.filter(pk=fee.id).exists())
+        fee_open1 = MembershipFee.objects.create(year=date.today().year, person_ref="person:2", person_name="Offen Eins", amount=Decimal("60.00"))
+        fee_open2 = MembershipFee.objects.create(year=date.today().year, person_ref="person:3", person_name="Offen Zwei", amount=Decimal("60.00"))
+        self.client.post("/finance/fees/", {"action": "delete_fee", "year": str(date.today().year), "pk": str(fee_open1.id)})
+        self.assertFalse(MembershipFee.objects.filter(pk=fee_open1.id).exists())
+        self.client.post("/finance/fees/", {"action": "delete_open", "year": str(date.today().year)})
+        self.assertFalse(MembershipFee.objects.filter(pk=fee_open2.id).exists())
+        self.assertTrue(MembershipFee.objects.filter(pk=fee.id).exists())
+
         rep = self.client.get(f"/finance/report/pdf/?year={date.today().year}")
         self.assertEqual(rep.status_code, 200)
 
